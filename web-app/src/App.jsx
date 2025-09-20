@@ -4,9 +4,11 @@ import './App.css'
 import Header from "./components/header.jsx"
 import Onboarding from "./components/onboarding.jsx"
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import DashboardHome from "./components/dashboard/home.jsx"
+import PersonalInput from "./components/dashboard/home.jsx"
 import Resources from "./components/dashboard/resources.jsx"
 import Information from "./components/dashboard/info.jsx"
+import LandingPage from "./components/landing.jsx"
+import Visualization from "./components/visualization.jsx"
 
 
 function App() {
@@ -17,10 +19,12 @@ function App() {
     <Router>
       <Header title="My App" />
       <Routes>
-        <Route path="/dashboard" element={<DashboardHome title='This is dashboard home'/>} />
-        <Route path="/dashboard/resources" element={<Resources title='This is resources'/>} />
-        <Route path="/dashboard/learn-more" element={<Information title='This is info'/>} />
-        <Route path="/onboarding" element={<Onboarding title='This is info'/>} />
+        <Route path='/' element={<LandingPage/>}/>
+        <Route path="/personal" element={<PersonalInput title='This is dashboard home'/>} />
+        <Route path="/personal/resources" element={<Resources title='This is resources'/>} />
+        <Route path="/personal/learn-more" element={<Information title='This is info'/>} />
+        <Route path="/insurance" element={<Onboarding/>} />
+        <Route path='/datavis' element={<Visualization/>} />
       </Routes>
     </Router>
     </>
