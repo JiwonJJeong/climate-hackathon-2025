@@ -356,8 +356,8 @@ const CSVUploader = () => {
                       sx={{ 
                         fontWeight: 'bold', 
                         fontSize: '12px',
-                        backgroundColor: header === 'risk_percentage' ? '#e8f5e8' : (header === 'aqi_category' ? '#fff3e0' : (header === 'inpatient_cost_increase' ? '#e8eaf6' : 'inherit')),
-                        color: header === 'risk_percentage' ? '#2e7d32' : (header === 'aqi_category' ? '#e65100' : (header === 'inpatient_cost_increase' ? '#283593' : 'inherit'))
+                        backgroundColor: header === 'risk_percentage' ? '#e8f5e8' : (header === 'lift_vs_baseline' ? '#fff3e0' : (header === 'inpatient_cost_increase' ? '#e8eaf6' : 'inherit')),
+                        color: header === 'risk_percentage' ? '#2e7d32' : (header === 'lift_vs_baseline' ? '#e65100' : (header === 'inpatient_cost_increase' ? '#283593' : 'inherit'))
                       }}
                     >
                       {header === 'risk_percentage' ? 'Personal Climate Risk %' : (header === 'aqi_category' ? 'AQI Category' : (header === 'inpatient_cost_increase' ? 'Inpatient $ Increase' : header))}
@@ -371,19 +371,29 @@ const CSVUploader = () => {
                     {row.map((cell, cellIndex) => {
                       const header = parsed.headers[cellIndex];
                       const isRiskColumn = header === 'risk_percentage';
-                      const isAqiCat = header === 'aqi_category';
+                      const isLift = header === 'lift_vs_baseline';
                       const isIpInc = header === 'inpatient_cost_increase';
+                      const isZipBasePred = header === 'zip_base_pred_ip_pmpm';
+                      const isZipAdmissionRate = header === 'zip_admission_rate';
                       return (
                         <TableCell 
                           key={cellIndex} 
                           sx={{ 
                             fontSize: '12px',
-                            backgroundColor: isRiskColumn ? '#f1f8e9' : (isAqiCat ? '#fff8e1' : (isIpInc ? '#e8eaf6' : 'inherit')),
-                            color: isRiskColumn ? '#2e7d32' : (isAqiCat ? '#ef6c00' : (isIpInc ? '#283593' : 'inherit')),
+                            backgroundColor: isRiskColumn ? '#f1f8e9' : (isLift ? '#fff8e1' : (isIpInc ? '#e8eaf6' : 'inherit')),
+                            color: isRiskColumn ? '#2e7d32' : (isLift ? '#ef6c00' : (isIpInc ? '#283593' : 'inherit')),
                             fontWeight: isRiskColumn || isIpInc ? 'bold' : 'normal'
                           }}
                         >
-                          {isRiskColumn && cell ? `${cell}%` : (isIpInc && cell ? Number(cell).toLocaleString(undefined, { style: 'currency', currency: 'USD' }).replace('$', '') : cell)}
+                          {isRiskColumn && cell
+                            ? `${cell}%`
+                            : (isIpInc && cell
+                              ? Number(cell).toLocaleString(undefined, { style: 'currency', currency: 'USD' }).replace('$', '')
+                              : (isZipBasePred && cell
+                                ? Number(cell).toLocaleString(undefined, { style: 'currency', currency: 'USD' })
+                                : (isZipAdmissionRate && cell
+                                  ? `${((Number(cell) <= 1 ? Number(cell) * 100 : Number(cell))).toFixed(2)}%`
+                                  : cell)))}
                         </TableCell>
                       );
                     })}

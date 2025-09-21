@@ -112,24 +112,6 @@ const HeroSection = () => (
     Individuals
   </Button>
 
-  <Button
-    component={Link}
-    to="/analysis"
-    variant="contained"
-    size="large"
-    sx={{
-      backgroundColor: 'rgba(25, 118, 210, 0.9)',
-      color: 'white',
-      borderRadius: '30px',
-      textTransform: 'none',
-      px: 4,
-      '&:hover': {
-        backgroundColor: 'rgba(25, 118, 210, 1)',
-      },
-    }}
-  >
-    📊 View Analysis
-  </Button>
 </Box>
 
     </Box>
