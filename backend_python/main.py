@@ -384,8 +384,9 @@ async def compute_risk_with_weather(date: str = None, filename: str = None):
             
             merged_df['risk_percentage'] = risk_scores
         
-        # 5. Save updated file with special prefix
-        output_filename = f"ANALYSIS_{date}_{filename}"
+        # 5. Save updated file with clear composite name using BASE patient file
+        # Format: ANALYSIS_<ANALYSISDATE>_<BASEFILENAME>
+        output_filename = f"ANALYSIS_{date}_{os.path.basename(base_filename)}"
         output_path = os.path.join("uploads", output_filename)
         merged_df.to_csv(output_path, index=False)
         
