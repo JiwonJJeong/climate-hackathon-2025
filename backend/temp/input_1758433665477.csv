@@ -1,0 +1,8 @@
+MemberID,Payer,Plan_Zip,Age,gender,diabetes,hypertension,chronic_kidney,liver_disease,copd,heart_disease,comorbidity_count,fake_name,fake_email,fake_phone,zip
+MB66CEC123D,ADV,90001,98,F,1,0,0,0,0,0,1,Micah Diaz,micah.diaz@example.com,(492) 925-7447,90001
+M8DDC3F4D46,ADV,90001,85,F,0,0,0,0,0,0,0,Avery Xu,avery.xu@example.com,(646) 286-6153,90001
+M6986182E01,ADV,90001,88,M,0,0,0,0,0,0,0,Rowan Hernandez,rowan.hernandez@example.com,(579) 866-8703,90001
+M2BD617C645,ADV,90001,96,M,1,0,0,0,0,0,1,Quinn Evans,quinn.evans@example.com,(326) 552-9913,90001
+M35CDC82F0F,ADV,90001,83,M,0,0,0,0,0,0,0,Payton Diaz,payton.diaz@example.com,(493) 725-4112,90001
+ME671F73F71,ADV,90001,91,M,1,1,0,0,0,0,2,Nova Xu,nova.xu@example.com,(418) 487-8392,90001
+MBDEFC9C374,ADV,90001,94,M,0,0,0,0,0,1,1,Will Ramirez,will.ramirez@example.com,(593) 462-2340,90001

@@ -1,0 +1,13 @@
+{
+  "date": "2025-09-21",
+  "locations": {
+    "90001": {
+      "maxTemp": 28.5,
+      "maxAqi": 97,
+      "latitude": 33.9731,
+      "longitude": -118.2479,
+      "city": "Los Angeles",
+      "state": "CA"
+    }
+  }
+}
