@@ -2,9 +2,59 @@ import os
 import pickle
 import pandas as pd
 import numpy as np
+import zipcodes
+import httpx
+import asyncio
+import json
 
 # Global variable to store the loaded model
 model_data = None
+
+
+import asyncio
+import httpx
+import json
+import pandas as pd
+import zipcodes
+
+def get_unique_zips(df):
+    return df['zip'].unique()
+
+async def fetch_zip_data(zip_code, client):
+    info = zipcodes.matching(zip_code)
+    if not info:
+        return { "zip": zip_code, "aqi": None, "error": "Invalid ZIP code" }
+
+    lat = info[0]["lat"]
+    lon = info[0]["long"]
+
+    try:
+        aqi_url = f"https://air-quality-api.open-meteo.com/v1/air-quality?latitude={lat}&longitude={lon}&daily=us_aqi&timezone=auto"
+        resp = await client.get(aqi_url)
+        data = resp.json()
+
+        # Extract the first AQI value
+        aqi = data["daily"]["us_aqi"][0] if "daily" in data and "us_aqi" in data["hourly"] else None
+
+        return { "zip": zip_code, "aqi": aqi }
+
+    except Exception as e:
+        return { "zip": zip_code, "aqi": None, "error": str(e) }
+
+async def fetch_multiple_zips(df, save=False):
+    uzips = get_unique_zips(df)
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        tasks = [fetch_zip_data(z, client) for z in uzips]
+        results = await asyncio.gather(*tasks)
+
+        # Convert to DataFrame
+        result_df = pd.DataFrame(results)[["zip", "aqi"]]  # Only keep zip and aqi columns
+
+        if save:
+            result_df.to_json("data/tempaqi.json", orient="records", indent=2)
+
+        return result_df
 
 def load_model():
     """Load the pickled model once at startup"""
@@ -112,3 +162,10 @@ def get_weather(date: str, weather_path: str | None = None) -> pd.DataFrame:
     df = pd.read_csv(weather_path, usecols=['date', 'zipcode', 'AQI'])
     filtered = df[df['date'].astype(str) == str(date)][['zipcode', 'AQI']]
     return filtered.reset_index(drop=True)
+
+def get_weather_current():
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    weather_path = os.path.abspath(os.path.join(current_dir, 'data', 'weather_data.csv'))
+    df = pd.read_csv(weather_path, usecols=[ 'zipcode'])
+    df.to_csv('/data/zipaqi.csv',index=False)
+    return fetch_multiple_zips(df)

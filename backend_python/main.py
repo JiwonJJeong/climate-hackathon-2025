@@ -11,6 +11,7 @@ import time
 import pandas as pd
 from utils import load_model, predict_risk_percentage, predict_risk_batch, get_weather as load_weather_for_date
 
+
 app = FastAPI(
     title="Climate Hackathon 2025 Backend",
     description="Backend API for Climate Hackathon 2025",
@@ -53,6 +54,7 @@ async def root():
             "redoc": "/redoc"
         }
     }
+
 
 @app.get("/health")
 async def health_check():
