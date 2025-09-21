@@ -9,7 +9,7 @@ import shutil
 from datetime import datetime
 import time
 import pandas as pd
-from utils import load_model, predict_risk_percentage, predict_risk_batch, get_weather as load_weather_for_date
+from utils import calc_inpatient_dollars_increase, load_model, predict_risk_percentage, predict_risk_batch, get_weather as load_weather_for_date
 
 
 app = FastAPI(
@@ -300,22 +300,18 @@ async def compute_risk_with_weather(date: str = None, filename: str = None):
         if 'AQI' in patient_df.columns:
             patient_df = patient_df.drop(columns=['AQI'])
         
-        # 3. Strict match: patient 'Plan Zip' == weather 'zipcode'
-        if 'Plan Zip' not in patient_df.columns:
-            raise HTTPException(status_code=400, detail="Column 'Plan Zip' not found in patient data")
-
         # Coerce zip columns to numeric (strict), drop rows where conversion fails
-        patient_df['Plan Zip'] = pd.to_numeric(patient_df['Plan Zip'], errors='coerce')
+        patient_df['plan_zip'] = pd.to_numeric(patient_df['plan_zip'], errors='coerce')
         weather_filtered['zipcode'] = pd.to_numeric(weather_filtered['zipcode'], errors='coerce')
         before_zip_patient = len(patient_df)
         before_zip_weather = len(weather_filtered)
-        patient_df = patient_df.dropna(subset=['Plan Zip'])
+        patient_df = patient_df.dropna(subset=['plan_zip'])
         weather_filtered = weather_filtered.dropna(subset=['zipcode'])
         print(f"[risk] dropped non-numeric zips -> patients: {before_zip_patient}->{len(patient_df)}, weather: {before_zip_weather}->{len(weather_filtered)}")
 
         merged_df = patient_df.merge(
             weather_filtered,
-            left_on='Plan Zip',
+            left_on='plan_zip',
             right_on='zipcode',
             how='inner'  # exclude rows without AQI
         )
@@ -385,6 +381,9 @@ async def compute_risk_with_weather(date: str = None, filename: str = None):
                     risk_scores.append(None)
             
             merged_df['risk_percentage'] = risk_scores
+        
+        # Add inpatient dollars increase using AQI category and lift table
+        merged_df = calc_inpatient_dollars_increase(merged_df)
         
         # 5. Save updated file with clear composite name using BASE patient file
         # Format: ANALYSIS_<ANALYSISDATE>_<BASEFILENAME>
