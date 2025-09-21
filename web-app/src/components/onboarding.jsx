@@ -166,7 +166,17 @@ const CSVUploader = () => {
   };
 
   return (
-    <Box sx={{ padding: 2, maxWidth: 800 }}>
+    <Box
+    sx={{
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'flex-start', // change to 'center' for vertical centering too
+      minHeight: '100vh',
+      backgroundColor: '#fafafa',
+      padding: 2,
+    }}
+  >
+    <Box sx={{ mt:15, padding: 2, maxWidth: 800 }}>
       <Typography variant="h6" gutterBottom>
         Upload CSV File
       </Typography>
@@ -393,6 +403,7 @@ const CSVUploader = () => {
         <Typography color="error">File selected but no data loaded</Typography>
       )}
     </Box>
+   </Box>
   );
 };
 

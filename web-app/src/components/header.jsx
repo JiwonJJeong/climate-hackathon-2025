@@ -20,7 +20,7 @@ const Header = ({ title }) => {
     alignItems: 'center', // vertically center if needed
   }}
 >
-  My Website
+  my Climate
 </Typography>
 
         {/* Navigation Links */}
@@ -32,7 +32,7 @@ const Header = ({ title }) => {
             For Individuals
           </Button>
           <Button color="inherit" component={Link} to="/personal">
-            Health
+            About
           </Button>
         </Box>
 
