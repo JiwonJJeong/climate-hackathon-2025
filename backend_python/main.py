@@ -1,16 +1,15 @@
 # main.py - FastAPI Backend for Climate Hackathon 2025
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from fastapi.middleware.gzip import GZipMiddleware
 import uvicorn
+import traceback
 import os
 import shutil
 from datetime import datetime
 import time
 import pandas as pd
-import numpy as np
-from utils import load_model, predict_risk_percentage, predict_risk_batch
+from utils import load_model, predict_risk_percentage, predict_risk_batch, get_weather as load_weather_for_date
 
 app = FastAPI(
     title="Climate Hackathon 2025 Backend",
@@ -105,7 +104,7 @@ async def upload_file(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail="Error saving file")
 
 @app.get("/api/get_weather")
-async def get_weather():
+async def get_weather_mock():
     """Get mock weather data"""
     return {
         "temperature": 25,
@@ -258,70 +257,97 @@ async def get_weather_data(date: str):
 async def compute_risk_with_weather(date: str = None, filename: str = None):
     """Compute risk by merging patient data with weather data for a specific date"""
     try:
+        print(f"[risk] compute_risk_with_weather START date={date}, filename={filename}")
         # Load the model
         if not hasattr(compute_risk_with_weather, 'model_loaded'):
             load_model()
             compute_risk_with_weather.model_loaded = True
         
         # 1. Get weather data for the date
-        weather_file = os.path.join("data", "weather_data.csv")
-        if not os.path.exists(weather_file):
-            raise HTTPException(status_code=404, detail="Weather data file not found")
+        try:
+            weather_filtered = load_weather_for_date(date)
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e))
         
-        weather_df = pd.read_csv(weather_file)
-        weather_filtered = weather_df[weather_df['date'].astype(str) == date][['zipcode', 'AQI']]
-        
+        print(f"[risk] weather rows for {date}: {len(weather_filtered)}")
+        if len(weather_filtered) > 0:
+            print(f"[risk] weather sample ZIPs: {weather_filtered['zipcode'].head(5).tolist()}")
         if len(weather_filtered) == 0:
             raise HTTPException(status_code=404, detail=f"No weather data for date {date}")
         
-        # 2. Load patient CSV file
-        patient_file = os.path.join("uploads", filename)
+        # 2. Load patient CSV file (if ANALYSIS_..., use the original source file)
+        request_filename = filename or ''
+        base_filename = request_filename
+        if request_filename.startswith('ANALYSIS_'):
+            # Strip ANALYSIS_YYYYMMDD_ prefix if present
+            parts = request_filename.split('_', 2)
+            if len(parts) >= 3 and parts[0] == 'ANALYSIS' and parts[1].isdigit():
+                base_filename = parts[2]
+        patient_file = os.path.join("uploads", base_filename)
         if not os.path.exists(patient_file):
-            raise HTTPException(status_code=404, detail="Patient file not found")
-        
+            # Fallback to the provided filename if derived base not found
+            patient_file = os.path.join("uploads", request_filename)
+        if not os.path.exists(patient_file):
+            raise HTTPException(status_code=404, detail=f"Patient file not found: {base_filename} or {request_filename}")
+
+        print(f"[risk] loading patient file: {os.path.basename(patient_file)} (requested={request_filename})")
         patient_df = pd.read_csv(patient_file)
+        print(f"[risk] patient file shape: {patient_df.shape}")
+        print(f"[risk] patient columns: {list(patient_df.columns)[:20]}")
+        # Guarantee there is no AQI column entering the merge from patient side
+        if 'AQI' in patient_df.columns:
+            patient_df = patient_df.drop(columns=['AQI'])
         
-        # 3. Match by zipcode (try different column names)
-        zip_col = None
-        for col in ['Plan Zip', 'plan_zip', 'zipcode', 'zip']:
-            if col in patient_df.columns:
-                zip_col = col
-                break
-        
-        if not zip_col:
-            raise HTTPException(status_code=400, detail="No zipcode column found in patient data")
-        
-        # Merge data
+        # 3. Strict match: patient 'Plan Zip' == weather 'zipcode'
+        if 'Plan Zip' not in patient_df.columns:
+            raise HTTPException(status_code=400, detail="Column 'Plan Zip' not found in patient data")
+
+        # Coerce zip columns to numeric (strict), drop rows where conversion fails
+        patient_df['Plan Zip'] = pd.to_numeric(patient_df['Plan Zip'], errors='coerce')
+        weather_filtered['zipcode'] = pd.to_numeric(weather_filtered['zipcode'], errors='coerce')
+        before_zip_patient = len(patient_df)
+        before_zip_weather = len(weather_filtered)
+        patient_df = patient_df.dropna(subset=['Plan Zip'])
+        weather_filtered = weather_filtered.dropna(subset=['zipcode'])
+        print(f"[risk] dropped non-numeric zips -> patients: {before_zip_patient}->{len(patient_df)}, weather: {before_zip_weather}->{len(weather_filtered)}")
+
         merged_df = patient_df.merge(
-            weather_filtered, 
-            left_on=zip_col, 
-            right_on='zipcode', 
-            how='left'
+            weather_filtered,
+            left_on='Plan Zip',
+            right_on='zipcode',
+            how='inner'  # exclude rows without AQI
         )
+        print(f"[risk] merged shape (inner on Plan Zip vs zipcode): {merged_df.shape}")
         
-        # Fill missing AQI with median value
-        merged_df['AQI'] = merged_df['AQI'].fillna(merged_df['AQI'].median())
+        # Keep only needed columns
+        # Weather provides the AQI; normalize any suffixes then drop helpers
+        if 'AQI_y' in merged_df.columns:
+            merged_df = merged_df.rename(columns={'AQI_y': 'AQI'})
+        if 'AQI_x' in merged_df.columns:
+            merged_df = merged_df.drop(columns=['AQI_x'])
+        if 'AQI' not in merged_df.columns:
+            raise HTTPException(status_code=400, detail="AQI missing after merge")
+        if 'zipcode' in merged_df.columns:
+            merged_df = merged_df.drop(columns=['zipcode'])
         
-        # 4. Apply the model
+        # 4. Apply the model (no fallbacks; require exact columns)
         required_cols = ['Age', 'AQI', 'diabetes', 'hypertension', 'heart_disease']
-        
-        # Check if required columns exist
-        missing_cols = []
-        for col in required_cols:
-            if col not in merged_df.columns:
-                # Try different variations
-                variations = [col.lower(), col.upper(), col.replace('_', ' ')]
-                found = False
-                for var in variations:
-                    if var in merged_df.columns:
-                        merged_df[col] = merged_df[var]
-                        found = True
-                        break
-                if not found:
-                    missing_cols.append(col)
-        
+        missing_cols = [c for c in required_cols if c not in merged_df.columns]
         if missing_cols:
+            print(f"[risk] missing columns: {missing_cols}")
             raise HTTPException(status_code=400, detail=f"Missing columns: {missing_cols}")
+
+        # Coerce required numeric columns to numeric (no filling)
+        for c in ['Age', 'AQI', 'diabetes', 'hypertension', 'heart_disease']:
+            merged_df[c] = pd.to_numeric(merged_df[c], errors='coerce')
+
+        # Per requirements: do not fill NA; drop rows with any NA in required columns
+        before_rows = len(merged_df)
+        merged_df = merged_df.dropna(subset=required_cols)
+        after_rows = len(merged_df)
+        print(f"[risk] rows after dropna on required cols: {before_rows}->{after_rows}")
+        if after_rows == 0:
+            raise HTTPException(status_code=400, detail="All rows dropped after filtering: missing values in required columns or no ZIP matches for chosen date")
         
         # Apply model to all rows at once (MUCH FASTER - batch processing)
         print(f"⚡ Processing {len(merged_df)} records with batch prediction...")
@@ -338,6 +364,7 @@ async def compute_risk_with_weather(date: str = None, filename: str = None):
             
         except Exception as e:
             print(f"❌ Batch processing failed: {e}")
+            print(traceback.format_exc())
             print("🔄 Falling back to row-by-row processing...")
             
             # Fallback to individual processing if batch fails
@@ -370,6 +397,53 @@ async def compute_risk_with_weather(date: str = None, filename: str = None):
             "average_risk": merged_df['risk_percentage'].mean() if len(merged_df) > 0 else None
         }
         
+    except HTTPException as he:
+        # Let FastAPI handle these gracefully with their status codes
+        print(f"[risk] HTTPException: {he.status_code} {he.detail}")
+        raise he
+    except Exception as e:
+        print("[risk] Unhandled error in compute_risk_with_weather:")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+@app.post("/api/top_risk")
+async def top_risk(filename: str, percentile: float = 0.9, rows: int = 200, write_file: bool = True):
+    """Return top percentile risk rows and optionally write a filtered file.
+
+    Args:
+        filename: CSV file in uploads directory (typically an ANALYSIS_ file)
+        percentile: threshold percentile (e.g., 0.9 for top 10%)
+        rows: number of preview rows to return
+        write_file: whether to write filtered file to uploads
+    """
+    try:
+        file_path = os.path.join("uploads", filename)
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="File not found")
+
+        df = pd.read_csv(file_path)
+        if 'risk_percentage' not in df.columns:
+            raise HTTPException(status_code=400, detail="risk_percentage column not found. Run analysis first.")
+
+        # Compute threshold and filter
+        threshold = df['risk_percentage'].quantile(percentile)
+        filtered = df[df['risk_percentage'] >= threshold].sort_values('risk_percentage', ascending=False)
+
+        # Write filtered file
+        output_filename = None
+        if write_file:
+            output_filename = f"ANALYSIS_TOP{int((1-percentile)*100)}_{filename}"
+            filtered.to_csv(os.path.join("uploads", output_filename), index=False)
+
+        # Preview as CSV string (first N rows)
+        preview_csv = filtered.head(rows).to_csv(index=False)
+
+        return {
+            "count": int(len(filtered)),
+            "threshold": float(threshold) if pd.notna(threshold) else None,
+            "csv_preview": preview_csv,
+            "output_file": output_filename
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 

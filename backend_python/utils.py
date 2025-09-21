@@ -88,3 +88,27 @@ def predict_risk_batch(data_df):
     risk_percentages = (risk_probabilities * 100).round(2)
     
     return risk_percentages.tolist()
+
+def get_weather(date: str, weather_path: str | None = None) -> pd.DataFrame:
+    """
+    Load weather data and return filtered rows for a given YYYYMMDD date.
+
+    Parameters:
+    - date: string like '20170101'
+    - weather_path: optional explicit path to weather_data.csv
+
+    Returns:
+    - pandas DataFrame with columns ['zipcode', 'AQI'] for the given date
+    """
+    # Resolve default path relative to this file
+    if weather_path is None:
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        weather_path = os.path.abspath(os.path.join(current_dir, 'data', 'weather_data.csv'))
+
+    if not os.path.exists(weather_path):
+        raise FileNotFoundError(f"Weather data not found at {weather_path}")
+
+    # Read only necessary columns for speed
+    df = pd.read_csv(weather_path, usecols=['date', 'zipcode', 'AQI'])
+    filtered = df[df['date'].astype(str) == str(date)][['zipcode', 'AQI']]
+    return filtered.reset_index(drop=True)
