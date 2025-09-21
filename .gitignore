@@ -5,3 +5,23 @@ data-exploration-jiwon/data/
 *.ipynb_checkpoints/
 
 datasets/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+.env
+
+# Backend uploads (keep structure but ignore uploaded files)
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend_python/uploads/*
+!backend_python/uploads/.gitkeep
+
+# Log files
+*.log

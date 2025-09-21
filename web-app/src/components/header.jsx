@@ -28,7 +28,7 @@ const Header = ({ title }) => {
           <Button color="inherit" component={Link} to="/insurance">
             For Insurance
           </Button>
-          <Button color="inherit" component={Link} to="/personal">
+          <Button color="inherit" component={Link} to="/individuals">
             For Individuals
           </Button>
           <Button color="inherit" component={Link} to="/personal">
