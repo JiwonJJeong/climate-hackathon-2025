@@ -98,7 +98,7 @@ def get_weather(date: str, weather_path: str | None = None) -> pd.DataFrame:
     - weather_path: optional explicit path to weather_data.csv
 
     Returns:
-    - pandas DataFrame with columns ['zipcode', 'AQI'] for the given date
+    - pandas DataFrame with columns ['zipcode', 'AQI', 'aqi_category'] for the given date
     """
     # Resolve default path relative to this file
     if weather_path is None:
@@ -109,6 +109,41 @@ def get_weather(date: str, weather_path: str | None = None) -> pd.DataFrame:
         raise FileNotFoundError(f"Weather data not found at {weather_path}")
 
     # Read only necessary columns for speed
-    df = pd.read_csv(weather_path, usecols=['date', 'zipcode', 'AQI'])
-    filtered = df[df['date'].astype(str) == str(date)][['zipcode', 'AQI']]
+    df = pd.read_csv(weather_path, usecols=['date', 'zipcode', 'AQI', 'aqi_category'])
+    filtered = df[df['date'].astype(str) == str(date)][['zipcode', 'AQI', 'aqi_category']]
     return filtered.reset_index(drop=True)
+
+def calc_inpatient_dollars_increase(df: pd.DataFrame) -> pd.DataFrame:
+    """Augment dataframe with baseline_multiplier and inpatient_cost_increase using AQI lifts.
+
+    - Load lift table from data/aqi_lift_ip_pnpm.csv
+    - Ensure 'LOB' exists (fallback to 'Payer')
+    - Merge on ['LOB', 'aqi_category'] to get 'lift_vs_baseline'
+    - baseline_multiplier = lift_vs_baseline
+    - inpatient_cost_increase = zip_base_pred_IP_PMPM * (baseline_multiplier - 1)
+    """
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    lift_path = os.path.abspath(os.path.join(current_dir, 'data', 'aqi_lift_ip_pnpm.csv'))
+    if not os.path.exists(lift_path):
+        lift_path = os.path.abspath(os.path.join('data', 'aqi_lift_ip_pnpm.csv'))
+
+    lift_df = pd.read_csv(lift_path)
+
+    working_df = df.copy()
+
+    # Merge multiplier
+    working_df = working_df.merge(
+        lift_df[['LOB', 'aqi_category', 'lift_vs_baseline']],
+        on=['LOB', 'aqi_category'],
+        how='left'
+    )
+
+    working_df['baseline_multiplier'] = working_df['lift_vs_baseline']
+
+    base_col = 'zip_base_pred_IP_PMPM'
+    if base_col in working_df.columns:
+        working_df['inpatient_cost_increase'] = working_df[base_col] * (working_df['baseline_multiplier'].fillna(1) - 1)
+    else:
+        working_df['inpatient_cost_increase'] = np.nan
+
+    return working_df
