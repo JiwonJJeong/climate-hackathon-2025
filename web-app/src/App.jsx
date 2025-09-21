@@ -9,6 +9,7 @@ import Resources from "./components/dashboard/resources.jsx"
 import Information from "./components/dashboard/info.jsx"
 import LandingPage from "./components/landing.jsx"
 import Visualization from "./components/visualization.jsx"
+import { CssBaseline } from '@mui/material';
 
 
 function App() {
@@ -16,6 +17,7 @@ function App() {
 
   return (
     <>
+    <CssBaseline/>
     <Router>
       <Header title="My App" />
       <Routes>

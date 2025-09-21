@@ -9,28 +9,55 @@ import {
   CssBaseline,
 } from '@mui/material';
 import {Link} from 'react-router-dom'
+import '../fonts.css'
+
+import heroBg from '../assets/maddison-mcmurrin-GDumtPpJsT4-unsplash.jpg';
 
 const HeroSection = () => (
-  <Box
+      <Box
     sx={{
-      height: '80vh',
-      backgroundColor: 'primary.main',
-      color: 'white',
+      height: '100vh',                      // Full screen
+      width: '100%',                        // Full width
+      backgroundImage: `url(${heroBg})`,    // Background image
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      backgroundRepeat: 'no-repeat',
       display: 'flex',
       flexDirection: 'column',
       justifyContent: 'center',
       alignItems: 'center',
       textAlign: 'center',
+      color: 'white',
       px: 3,
-      pt: '80px', // padding top for external header
     }}
   >
-    <Typography variant="h2" component="h1" gutterBottom>
-      Welcome to MyCompany
-    </Typography>
-    <Typography variant="h5" paragraph>
-      We build awesome stuff that solves problems.
-    </Typography>
+<Typography
+  variant="h2"
+  component="h1"
+  gutterBottom
+  sx={{ fontFamily: 'OpenSauce, Arial, sans-serif' }}
+>
+  We all breath air.
+</Typography>
+
+<Typography variant="h5">
+  Air quality can determine your heart health.
+  Are you at risk?
+</Typography>
+
+<Typography
+  variant="body1" // smaller than h5
+  sx={{
+    fontFamily: 'sans-serif',
+    fontStyle: 'italic',
+    fontWeight: 'bold',
+    mt: 7, // margin-top to add space
+  }}
+>
+  Find out your air health score here
+</Typography>
+
+
 
     {/* Buttons container */}
     <Box
@@ -42,43 +69,51 @@ const HeroSection = () => (
         justifyContent: 'center',
       }}
     >
-      <Button
-        component={Link}
-        to="/insurance"
-        variant="contained"
-        color="secondary"
-        size="large"
-      >
-        Get Started (Insurance)
-      </Button>
-      <Button
-        component={Link}
-        to="/individuals"
-        variant="contained"
-        color="secondary"
-        size="large"
-      >
-        Get Startd (Individuals)
-        </Button>
+
+<Box display="flex" gap={4}> {/* Adjust `gap` as needed */}
+  <Button
+    component={Link}
+    to="/insurance"
+    variant="contained"
+    size="large"
+    sx={{
+      backgroundColor: 'white',
+      color: 'black',
+      borderRadius: '30px',
+      textTransform: 'none', // Optional: keeps casing normal
+      px: 4, // Optional: extra horizontal padding
+      '&:hover': {
+        backgroundColor: '#f0f0f0',
+      },
+    }}
+  >
+    Insurers
+  </Button>
+
+  <Button
+    component={Link}
+    to="/individuals"
+    variant="contained"
+    size="large"
+    sx={{
+      backgroundColor: 'white',
+      color: 'black',
+      borderRadius: '30px',
+      textTransform: 'none',
+      px: 4,
+      '&:hover': {
+        backgroundColor: '#f0f0f0',
+      },
+    }}
+  >
+    Individuals
+  </Button>
+</Box>
+
     </Box>
   </Box>
 );
 
-
-const features = [
-  {
-    title: 'Fast Performance',
-    description: 'Our product is optimized for speed and reliability.',
-  },
-  {
-    title: 'Secure',
-    description: 'Top-notch security ensures your data is safe with us.',
-  },
-  {
-    title: 'Easy to Use',
-    description: 'User-friendly interfaces for everyone.',
-  },
-];
 
 const Footer = () => (
   <Box
@@ -105,14 +140,7 @@ const Footer = () => (
 
 const LandingPage = () => (
   <>
-    <CssBaseline />
-    {/* Add margin-top to push whole page content down */}
-    <Box mt="80px">  
-      <main>
-        <HeroSection />
-      </main>
-      <Footer />
-    </Box>
+    <HeroSection />
   </>
 );
 

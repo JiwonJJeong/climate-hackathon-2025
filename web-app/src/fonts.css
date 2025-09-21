@@ -1,0 +1,9 @@
+@font-face {
+  font-family: 'OpenSauce';  /* Choose a name */
+  src: url('./fonts/OpenSauceSans-SemiBold.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap; /* optional, improves loading */
+}
+
+/* https://www.1001fonts.com/open-sauce-font.html */
