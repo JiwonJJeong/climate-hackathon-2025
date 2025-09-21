@@ -8,6 +8,8 @@ import shutil
 from datetime import datetime
 import time
 import pandas as pd
+import numpy as np
+from utils import load_model, predict_risk_percentage
 
 app = FastAPI(
     title="Climate Hackathon 2025 Backend",
@@ -29,6 +31,10 @@ os.makedirs("uploads", exist_ok=True)
 
 # Store server start time for uptime calculation
 start_time = time.time()
+
+# Load the climate health model at startup
+print("Loading climate health model...")
+load_model()
 
 @app.get("/")
 async def root():
@@ -213,36 +219,31 @@ async def get_data_summary(filename: str):
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 @app.get("/api/compute_risk")
-async def get_risk(age: int, gender: int = 0, aqi: int = 150, temperature: int = 25):
-    """Calculate health risk based on parameters"""
-    print(f"Risk calculation requested - Age: {age}, Gender: {gender}, AQI: {aqi}, Temperature: {temperature}")
+async def compute_risk(age: int, aqi: int = 150, diabetes: int = 0, hypertension: int = 0, heart_disease: int = 0):
+    """Calculate health risk using the trained climate health model"""
+    print(f"Risk calculation requested - Age: {age}, AQI: {aqi}, Diabetes: {diabetes}, Hypertension: {hypertension}, Heart Disease: {heart_disease}")
     
-    # Simple risk calculation
-    base_risk = 20
-    age_risk = (age - 30) * 0.5 if age > 30 else 0
-    aqi_risk = (aqi - 100) * 0.1 if aqi > 100 else 0
-    temp_risk = abs(temperature - 25) * 0.2
-    
-    total_risk = max(0, min(100, base_risk + age_risk + aqi_risk + temp_risk))
-    
-    result = {
-        "risk_percentage": round(total_risk, 2),
-        "risk_level": "Low" if total_risk < 30 else "Medium" if total_risk < 70 else "High",
-        "factors": {
-            "age": age_risk,
-            "aqi": aqi_risk,
-            "temperature": temp_risk
-        },
-        "inputs": {
-            "age": age,
-            "gender": gender,
-            "aqi": aqi,
-            "temperature": temperature
+    try:
+        # Use the trained model to predict risk
+        risk_percentage = predict_risk_percentage(age, aqi, diabetes, hypertension, heart_disease)
+        
+        result = {
+            "risk_percentage": risk_percentage,
+            "inputs": {
+                "age": age,
+                "aqi": aqi,
+                "diabetes": diabetes,
+                "hypertension": hypertension,
+                "heart_disease": heart_disease
+            }
         }
-    }
-    
-    print(f"Risk calculation result: {result}")
-    return result
+        
+        print(f"Risk calculation result: {result}")
+        return result
+        
+    except Exception as e:
+        print(f"Error calculating risk: {e}")
+        raise HTTPException(status_code=500, detail=f"Error calculating risk: {str(e)}")
 
 if __name__ == "__main__":
     uvicorn.run(
