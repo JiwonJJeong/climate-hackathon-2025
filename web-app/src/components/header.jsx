@@ -31,9 +31,6 @@ const Header = ({ title }) => {
           <Button color="inherit" component={Link} to="/personal">
             For Individuals
           </Button>
-          <Button color="inherit" component={Link} to="/personal">
-            Health
-          </Button>
         </Box>
 
       </Toolbar>

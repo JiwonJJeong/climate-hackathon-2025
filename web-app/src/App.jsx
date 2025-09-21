@@ -6,7 +6,7 @@ import PageLayout from "./components/inputwrapper.jsx"
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import LandingPage from "./components/landing-page/landing.jsx"
 import { CssBaseline } from '@mui/material';
-import PageWrapper from "./components/pagewrapper.jsx"
+import PageLayoutI from './components/inputindwrapper.jsx'
 
 
 function App() {
@@ -23,6 +23,12 @@ function App() {
     path="/insurance"
     element={
         <PageLayout />
+    }
+  />
+    <Route
+    path="/personal"
+    element={
+        <PageLayoutI />
     }
   />
 </Routes>

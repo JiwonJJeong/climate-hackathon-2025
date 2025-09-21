@@ -12,8 +12,10 @@ const { insertCsvRows, insertApiData, runQuery } = require("./db");
 const cors = require("cors");
 
 const app = express();
-app.use(express.json()); // <-- add this
+app.use(express.json());
 
+// Ensure temp folder exists
+if (!fs.existsSync('./temp')) fs.mkdirSync('./temp');
 
 const upload = multer({ storage: multer.memoryStorage() });
 app.use(cors({
@@ -71,8 +73,14 @@ function parseCsvBuffer(buffer) {
         if (!zipColumn) console.warn("No ZIP column detected in CSV");
       })
       .on("data", (row) => {
+        // Normalize Member_ID as string
+        if (row.member_id) row.Member_ID = String(row.member_id);
+        else if (row.Member_ID) row.Member_ID = String(row.Member_ID);
+
         processedCSV.push(row);
-        if (zipColumn && row[zipColumn]) row.zip = row[zipColumn]; // normalize
+
+        // Normalize ZIP column
+        if (zipColumn && row[zipColumn]) row.zip = row[zipColumn];
       })
       .on("end", () => resolve(processedCSV))
       .on("error", reject);
@@ -98,6 +106,23 @@ async function fetchDailyData(lat, lon) {
   }
 }
 
+async function fetchHourlyData(lat, lon) {
+  const aqiUrl = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&hourly=us_aqi&forecast_days=5&timezone=auto`;
+  const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m&forecast_days=5&timezone=auto&temperature_unit=fahrenheit`;
+
+  const [aqiRes, heatRes] = await Promise.all([
+    axios.get(aqiUrl),
+    axios.get(weatherUrl),
+  ]);
+
+  return {
+    time: aqiRes.data.hourly.time,
+    aqi: aqiRes.data.hourly.us_aqi,
+    temperature: heatRes.data.hourly.temperature_2m,
+  };
+}
+
+
 // ------------------
 // Upload endpoint
 // ------------------
@@ -106,112 +131,83 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
 
   const buffer = req.file.buffer;
   try {
-    // Parse CSV
     const processedCSV = await parseCsvBuffer(buffer);
 
-    // Deduplicate ZIPs
     const uniqueZips = [...new Set(processedCSV.map(r => r.zip).filter(Boolean))];
-    
-processedCSV.forEach(r => {
-  r.Plan_zip = r.zip;  // unified column
-});
+    processedCSV.forEach(r => r.Plan_zip = r.zip);
 
-
-
-    // Load cache
     const cache = loadCache();
 
-    // Prepare promises for all ZIPs not in cache
     const fetchPromises = uniqueZips.map(async (zip) => {
-      if (cache[zip]) return { zip, data: cache[zip] }; // use cache
-
+      if (cache[zip]) return { zip, data: cache[zip] };
       const info = zipcodes.lookup(zip);
-      if (!info) return { zip, data: { error: "Invalid ZIP" } };
-
+      if (!info) return { zip, data: { error: "Invalid ZIP", patients: [] } };
       const data = await fetchDailyData(info.latitude, info.longitude);
-      return {
-        zip,
-        data: {
-          ...data,
-          latitude: info.latitude,
-          longitude: info.longitude,
-          city: info.city,
-          state: info.state,
-        },
-      };
+      return { zip, data: { ...data, latitude: info.latitude, longitude: info.longitude, city: info.city, state: info.state, patients: [] } };
     });
 
-    // Execute all fetches in parallel
     const resultsArray = await Promise.all(fetchPromises);
 
-    // Combine results and update cache
     const apiResults = { ...cache };
     resultsArray.forEach(({ zip, data }) => {
-      apiResults[zip] = data;
+      apiResults[zip] = { ...data, patients: data.patients || [] };
     });
+
+    // Add patients from CSV
+    processedCSV.forEach(r => {
+      const zip = r.zip;
+      if (!apiResults[zip].patients) apiResults[zip].patients = [];
+      apiResults[zip].patients.push(r);
+    });
+
     saveCache(apiResults);
 
-    // --- Log AQI + Temperature summary ---
-console.log("=== AQI + Heat Data Summary ===");
-Object.entries(apiResults).forEach(([zip, data]) => {
-  if (!data) {
-    console.log(`ZIP ${zip}: No data`);
-    return;
-  }
+    // --- Logging ---
+    console.log("=== AQI + Heat Data Summary ===");
+    Object.entries(apiResults).forEach(([zip, data]) => {
+      if (!data) { console.log(`ZIP ${zip}: No data`); return; }
+      console.log(`ZIP ${zip}: AQI sample=${data.maxAqi ?? "N/A"}, Temp sample=${data.maxTemp ?? "N/A"}, Patients=${data.patients.length}`);
+    });
 
-  const maxAqi = data.maxAqi ?? "N/A";
-  const maxTemp = data.maxTemp ?? "N/A";
-  console.log(`ZIP ${zip}: AQI sample=${maxAqi}, Temp sample=${maxTemp}`);
-});
-
-
-    // Save temp files for Python processing
+    // Save temp files & call Python
     const tempCsvPath = `./temp/input_${Date.now()}.csv`;
     const tempApiPath = `./temp/api_results_${Date.now()}.json`;
     fs.writeFileSync(tempCsvPath, convertToCSV(processedCSV));
     fs.writeFileSync(tempApiPath, JSON.stringify(apiResults, null, 2));
 
-    // Call Python script
-const pyProcess = spawn("python3", ["./process_csv.py", tempCsvPath, tempApiPath]);
-let pythonOutput = "";
-pyProcess.stdout.on("data", (data) => { pythonOutput += data.toString(); });
-pyProcess.stderr.on("data", (err) => console.error(err.toString()));
+    const pyProcess = spawn("python3", ["./process_csv.py", tempCsvPath, tempApiPath]);
+    let pythonOutput = "";
+    pyProcess.stdout.on("data", (data) => pythonOutput += data.toString());
+    pyProcess.stderr.on("data", (err) => console.error(err.toString()));
 
-pyProcess.on("close", () => {
-  let processedData;
-  try {
-    processedData = JSON.parse(pythonOutput); // now it's JSON
-  } catch (err) {
-    console.error("Error parsing Python JSON:", err);
-    processedData = [];
-  }
+    pyProcess.on("close", () => {
+      let processedData = [];
+      try { processedData = JSON.parse(pythonOutput); } 
+      catch (err) { console.error("Error parsing Python JSON:", err); }
 
-  insertCsvRows(processedData);
-  insertApiData(apiResults);
+      insertCsvRows(processedData);
+      insertApiData(apiResults);
 
-  fs.unlinkSync(tempCsvPath);
-  fs.unlinkSync(tempApiPath);
+      fs.unlinkSync(tempCsvPath);
+      fs.unlinkSync(tempApiPath);
 
-  res.json({
-    message: "Processing complete",
-    processedData, // directly JSON
-    apiResults,
-  });
-});
+      res.json({ message: "Processing complete", processedData, apiResults });
+    });
 
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Optional SQL query endpoint
+// ------------------
+// SQL Query endpoint
+// ------------------
 app.post("/api/query", async (req, res) => {
   const { sql } = req.body;
-
   if (!sql) return res.status(400).json({ success: false, error: "No SQL provided" });
 
   try {
-    const rows = await runQuery(sql); // ✅ use runQuery from your db module
+    const rows = await runQuery(sql);
     res.json({ success: true, rows });
   } catch (err) {
     console.error(err);
@@ -219,43 +215,124 @@ app.post("/api/query", async (req, res) => {
   }
 });
 
-// Forecast endpoint for next 5 days hourly AQI + temperature
+// ------------------
+// Forecast endpoint
+// ------------------
 app.get("/api/forecast/:zip", async (req, res) => {
   const { zip } = req.params;
-
+  const info = zipcodes.lookup(zip);
+  if (!info) return res.status(400).json({ error: "Invalid ZIP" });
+  
   try {
-    // Lookup lat/lon using the `zipcodes` library
-    const info = zipcodes.lookup(zip);
-    if (!info) {
-      return res.status(400).json({ error: "Invalid ZIP code" });
-    }
-
-    const { latitude: lat, longitude: lon } = info;
-
-    // Fetch AQI and temperature (next 5 days hourly)
-    const aqiUrl = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&hourly=us_aqi&forecast_days=5&timezone=auto`;
-    const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m&forecast_days=5&timezone=auto&temperature_unit=fahrenheit`;
+    const aqiUrl = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${info.latitude}&longitude=${info.longitude}&hourly=us_aqi&forecast_days=5&timezone=auto`;
+    const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${info.latitude}&longitude=${info.longitude}&hourly=temperature_2m&forecast_days=5&timezone=auto`;
 
     const [aqiRes, heatRes] = await Promise.all([axios.get(aqiUrl), axios.get(weatherUrl)]);
-    const aqiData = aqiRes.data;
-    const heatData = heatRes.data;
 
-    // Return combined result
     res.json({
       zip,
-      latitude: lat,
-      longitude: lon,
-      hourly: {
-        time: aqiData.hourly.time,
-        us_aqi: aqiData.hourly.us_aqi,
-        temperature_2m: heatData.hourly.temperature_2m,
+      latitude: info.latitude,
+      longitude: info.longitude,
+      hourly: {  // <--- this must match frontend
+        time: aqiRes.data.hourly.time,
+        us_aqi: aqiRes.data.hourly.us_aqi,
+        temperature_2m: heatRes.data.hourly.temperature_2m
       },
     });
   } catch (err) {
-    console.error("Forecast fetch error:", err);
+    console.error(err);
     res.status(500).json({ error: "Failed to fetch forecast" });
   }
 });
+
+
+// ------------------
+// Health data submit
+// ------------------
+// server.js (only the health form endpoint)
+app.post("/api/submitHealthData", async (req, res) => {
+  const record = req.body;
+  if (!record || !record.zip) return res.status(400).json({ error: "ZIP code is required" });
+
+  try {
+    record.Plan_zip = record.zip;
+    const cache = loadCache();
+    const zip = record.zip;
+    let hourlyData;
+
+    // Use cached data if available
+    if (cache[zip]?.hourly) {
+      hourlyData = cache[zip].hourly;
+    } else {
+      const info = zipcodes.lookup(zip);
+      if (!info) return res.status(400).json({ error: "Invalid ZIP" });
+
+      hourlyData = await fetchHourlyData(info.latitude, info.longitude);
+
+      // Normalize keys to match Python
+      hourlyData = {
+        time: hourlyData.time,
+        temperature: hourlyData.temperature,
+        aqi: hourlyData.aqi,
+      };
+
+      cache[zip] = { ...cache[zip], hourly: hourlyData };
+      saveCache(cache);
+    }
+
+    // Save temp files for Python
+    const tempPatientPath = `./temp/patient_${Date.now()}.json`;
+    const tempApiPath = `./temp/api_${Date.now()}.json`;
+    fs.writeFileSync(tempPatientPath, JSON.stringify(record, null, 2));
+    fs.writeFileSync(tempApiPath, JSON.stringify(hourlyData, null, 2));
+
+    // Spawn Python
+    const pyProcess = spawn("python3", ["./process_patient.py", tempPatientPath, tempApiPath]);
+
+    let pythonOutput = "";
+    let pythonError = "";
+
+    pyProcess.stdout.on("data", (data) => pythonOutput += data.toString());
+    pyProcess.stderr.on("data", (data) => pythonError += data.toString());
+
+    pyProcess.on("close", (code) => {
+      // Always clean up temp files
+      fs.unlinkSync(tempPatientPath);
+      fs.unlinkSync(tempApiPath);
+
+      if (code !== 0) {
+        console.error("Python exited with code", code, pythonError);
+        return res.status(500).json({ error: "Python processing failed", details: pythonError });
+      }
+
+
+      let processedData;
+      try {
+        processedData = JSON.parse(pythonOutput);
+
+        // If Python returned an error object
+        if (!Array.isArray(processedData)) {
+          console.error("Python returned error object:", processedData);
+          return res.status(500).json({ error: processedData.error || "Python error", trace: processedData.trace });
+        }
+      } catch (err) {
+        console.error("Error parsing Python JSON:", err, pythonOutput);
+        return res.status(500).json({ error: "Failed to parse Python output", details: pythonOutput });
+      }
+
+      // Insert into DB correctly
+      insertCsvRows(processedData); // flattened array, not [processedData]
+      insertApiData({ [zip]: hourlyData });
+
+      res.json({ message: "Processing complete", processedData, apiResult: hourlyData });
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 
 app.listen(5000, () => console.log("Server running on port 5000"));

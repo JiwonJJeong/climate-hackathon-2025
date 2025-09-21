@@ -1,0 +1,13 @@
+{
+  "zip": "90001",
+  "age": "23",
+  "gender": "male",
+  "diabetes": "yes",
+  "hypertension": "no",
+  "chronic_kidney": "yes",
+  "liver_disease": "no",
+  "copd": "no",
+  "heart_disease": "yes",
+  "comorbidity_count": "1",
+  "Plan_zip": "90001"
+}

@@ -14,7 +14,20 @@ function insertCsvRows(rows) {
     VALUES(@MemberID, @Payer, @Plan_zip, @fake_name, @fake_email, @fake_phone, @risk_factor)
   `);
 
-  rows.forEach(r => stmt.run(r));
+
+  rows.forEach(r => {
+    stmt.run({
+      MemberID: r.Member_ID || r.member_id || "unknown",
+      Plan_zip: r.Plan_zip || r.zip || "",
+      age: r.age || 0,
+      diabetes: r.diabetes || "no",
+      Payer: r.Payer || r.payer || "unknown",
+      fake_name: r.fake_name || "unknown",
+      fake_email: r.fake_email || "unknown@example.com",
+      fake_phone: r.fake_phone || "000-000-0000",
+      risk_factor: r.risk_factor != null ? r.risk_factor : 0   // default to 0
+    });
+  });
 }
 
 
