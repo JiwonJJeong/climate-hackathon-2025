@@ -360,7 +360,7 @@ const CSVUploader = () => {
                         color: header === 'risk_percentage' ? '#2e7d32' : (header === 'aqi_category' ? '#e65100' : (header === 'inpatient_cost_increase' ? '#283593' : 'inherit'))
                       }}
                     >
-                      {header === 'risk_percentage' ? '🎯 Risk %' : (header === 'aqi_category' ? 'AQI Category' : (header === 'inpatient_cost_increase' ? 'Inpatient $ Increase' : header))}
+                      {header === 'risk_percentage' ? 'Personal Climate Risk %' : (header === 'aqi_category' ? 'AQI Category' : (header === 'inpatient_cost_increase' ? 'Inpatient $ Increase' : header))}
                     </TableCell>
                   ))}
                 </TableRow>

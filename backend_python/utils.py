@@ -188,11 +188,9 @@ def calc_inpatient_dollars_increase(df: pd.DataFrame) -> pd.DataFrame:
         how='left'
     )
 
-    working_df['baseline_multiplier'] = working_df['lift_vs_baseline']
-
     base_col = 'zip_base_pred_IP_PMPM'
     if base_col in working_df.columns:
-        working_df['inpatient_cost_increase'] = working_df[base_col] * (working_df['baseline_multiplier'].fillna(1) - 1)
+        working_df['inpatient_cost_increase'] = working_df[base_col] * (working_df['lift_vs_baseline'].fillna(1) - 1)
     else:
         working_df['inpatient_cost_increase'] = np.nan
 
