@@ -14,23 +14,26 @@ import '../fonts.css'
 import heroBg from '../assets/maddison-mcmurrin-GDumtPpJsT4-unsplash.jpg';
 
 const HeroSection = () => (
-      <Box
-    sx={{
-      height: '100vh',                      // Full screen
-      width: '100%',                        // Full width
-      backgroundImage: `url(${heroBg})`,    // Background image
-      backgroundSize: 'cover',
-      backgroundPosition: 'center',
-      backgroundRepeat: 'no-repeat',
-      display: 'flex',
-      flexDirection: 'column',
-      justifyContent: 'center',
-      alignItems: 'center',
-      textAlign: 'center',
-      color: 'white',
-      px: 3,
-    }}
-  >
+<Box
+  sx={{
+    height: '100vh',             // full viewport height
+    width: '100vw',              // full viewport width, not just 100%
+    maxWidth: '100vw',           // prevent shrinking from maxWidth defaults
+    backgroundImage: `url(${heroBg})`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    backgroundRepeat: 'no-repeat',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'center',
+    alignItems: 'center',
+    textAlign: 'center',
+    color: 'white',
+    px: 3,
+    overflowX: 'hidden',         // prevent horizontal scrollbar from 100vw
+    position: 'relative',        // good practice for positioning
+  }}
+>
 <Typography
   variant="h2"
   component="h1"
