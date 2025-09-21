@@ -70,7 +70,7 @@ const HeroSection = () => (
       }}
     >
 
-<Box display="flex" gap={4}> {/* Adjust `gap` as needed */}
+<Box display="flex" gap={3} flexWrap="wrap" justifyContent="center"> {/* Adjust `gap` as needed */}
   <Button
     component={Link}
     to="/insurance"
@@ -107,6 +107,25 @@ const HeroSection = () => (
     }}
   >
     Individuals
+  </Button>
+
+  <Button
+    component={Link}
+    to="/analysis"
+    variant="contained"
+    size="large"
+    sx={{
+      backgroundColor: 'rgba(25, 118, 210, 0.9)',
+      color: 'white',
+      borderRadius: '30px',
+      textTransform: 'none',
+      px: 4,
+      '&:hover': {
+        backgroundColor: 'rgba(25, 118, 210, 1)',
+      },
+    }}
+  >
+    📊 View Analysis
   </Button>
 </Box>
 

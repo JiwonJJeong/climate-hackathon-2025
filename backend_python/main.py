@@ -120,12 +120,15 @@ async def list_files():
 async def view_file(filename: str):
     """View file contents"""
     try:
-        file_path = os.path.join("data", filename)
+        file_path = os.path.join("uploads", filename)
         if not os.path.exists(file_path):
             raise HTTPException(status_code=404, detail="File not found")
         
         with open(file_path, 'r') as f:
             content = f.read()
+        
+        print(f"File content length: {len(content)}")
+        print(f"First 100 chars: {content[:100]}")
         
         return {"data": content}
     except Exception as e:
