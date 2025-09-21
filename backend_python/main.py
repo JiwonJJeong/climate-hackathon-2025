@@ -7,6 +7,7 @@ import os
 import shutil
 from datetime import datetime
 import time
+import pandas as pd
 
 app = FastAPI(
     title="Climate Hackathon 2025 Backend",
@@ -131,6 +132,83 @@ async def view_file(filename: str):
         print(f"First 100 chars: {content[:100]}")
         
         return {"data": content}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+@app.get("/api/data-summary/{filename}")
+async def get_data_summary(filename: str):
+    """Get clean data summary statistics"""
+    try:
+        file_path = os.path.join("uploads", filename)
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        # Read CSV file with pandas
+        df = pd.read_csv(file_path)
+        
+        # Basic counts
+        total_records = len(df)
+        
+        # Age stats (handle different possible column names)
+        age_col = None
+        for col in ['Age', 'age', 'AGE']:
+            if col in df.columns:
+                age_col = col
+                break
+        avg_age = df[age_col].mean() if age_col else None
+        
+        # Gender stats (F percentage)
+        gender_col = None
+        for col in ['gender', 'Gender', 'GENDER']:
+            if col in df.columns:
+                gender_col = col
+                break
+        
+        pct_female = None
+        if gender_col:
+            if df[gender_col].dtype == 'object':  # String values like 'F', 'M'
+                pct_female = (df[gender_col] == 'F').mean() * 100
+            else:  # Numeric values like 0, 1
+                pct_female = (df[gender_col] == 0).mean() * 100
+        
+        # Medical conditions percentages
+        conditions = ['diabetes', 'hypertension', 'chronic_kidney', 'liver_disease', 'copd', 'heart_disease']
+        condition_stats = {}
+        
+        for condition in conditions:
+            # Try different case variations
+            col_found = None
+            for col in df.columns:
+                if col.lower().replace(' ', '_') == condition:
+                    col_found = col
+                    break
+            
+            if col_found:
+                condition_stats[condition] = (df[col_found] == 1).mean() * 100
+        
+        # Payer distribution
+        payer_col = None
+        for col in ['Payer', 'payer', 'PAYER']:
+            if col in df.columns:
+                payer_col = col
+                break
+        
+        payer_stats = {}
+        if payer_col:
+            payer_counts = df[payer_col].value_counts()
+            payer_stats = {
+                payer: (count / total_records * 100) 
+                for payer, count in payer_counts.items()
+            }
+        
+        return {
+            "total_records": total_records,
+            "average_age": round(avg_age, 1) if avg_age else None,
+            "percent_female": round(pct_female, 1) if pct_female else None,
+            "condition_percentages": {k: round(v, 1) for k, v in condition_stats.items()},
+            "payer_distribution": {k: round(v, 1) for k, v in payer_stats.items()}
+        }
+        
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
