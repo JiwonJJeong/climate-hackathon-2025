@@ -104,7 +104,34 @@ async def get_weather():
         "timestamp": datetime.now().isoformat()
     }
 
-@app.get("/api/get_risk")
+@app.get("/api/files")
+async def list_files():
+    """List all files in the data directory"""
+    try:
+        data_dir = "uploads"
+        if not os.path.exists(data_dir):
+            os.makedirs(data_dir)
+        files = [f for f in os.listdir(data_dir) if f.endswith('.csv')]
+        return {"files": files}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+@app.get("/api/view/{filename}")
+async def view_file(filename: str):
+    """View file contents"""
+    try:
+        file_path = os.path.join("data", filename)
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        with open(file_path, 'r') as f:
+            content = f.read()
+        
+        return {"data": content}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+@app.get("/api/compute_risk")
 async def get_risk(age: int, gender: int = 0, aqi: int = 150, temperature: int = 25):
     """Calculate health risk based on parameters"""
     print(f"Risk calculation requested - Age: {age}, Gender: {gender}, AQI: {aqi}, Temperature: {temperature}")
