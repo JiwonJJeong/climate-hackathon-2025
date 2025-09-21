@@ -1,6 +1,7 @@
 // CSVUploader.js
 import React, { useState } from 'react';
 import { Box, Typography, Button, Alert, CircularProgress } from '@mui/material';
+import WeatherAirQualityChart from './weatheraqpicker.jsx'
 
 const CSVUploader = () => {
   console.log('hello')
@@ -73,6 +74,7 @@ const CSVUploader = () => {
 
       {message && <Alert severity="success" sx={{ mt: 2 }}>{message}</Alert>}
       {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
+      <WeatherAirQualityChart/>
     </Box>
   );
 };
