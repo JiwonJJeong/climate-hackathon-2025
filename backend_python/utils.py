@@ -1,5 +1,6 @@
 import os
 import pickle
+import pandas as pd
 import numpy as np
 
 # Global variable to store the loaded model
@@ -37,14 +38,77 @@ def predict_risk_percentage(age, aqi, diabetes, hypertension, heart_disease):
     if model_data is None:
         raise Exception("Model not loaded")
     
-    # Create input array with significant features only
-    input_data = np.array([[age, aqi, diabetes, hypertension, heart_disease]])
+    # Create DataFrame with proper feature names to avoid sklearn warnings
+    feature_names = ['AGE', 'AQI', 'Diabetes', 'Hypertension', 'Heart_Disease']
+    input_df = pd.DataFrame([[age, aqi, diabetes, hypertension, heart_disease]], 
+                           columns=feature_names)
     
     # Scale the input
-    input_scaled = model_data['scaler'].transform(input_data)
+    input_scaled = model_data['scaler'].transform(input_df)
     
     # Predict probability and convert to percentage
     risk_probability = model_data['model'].predict_proba(input_scaled)[0, 1]
     risk_percentage = risk_probability * 100
     
     return round(risk_percentage, 2)
+
+def predict_risk_batch(data_df):
+    """
+    Predict risk percentage for multiple patients at once (MUCH FASTER)
+    
+    Parameters:
+    - data_df: DataFrame with columns ['Age', 'AQI', 'diabetes', 'hypertension', 'heart_disease']
+    
+    Returns:
+    - list of risk percentages
+    """
+    if model_data is None:
+        raise Exception("Model not loaded")
+    
+    # Prepare feature names
+    feature_names = ['AGE', 'AQI', 'Diabetes', 'Hypertension', 'Heart_Disease']
+    
+    # Create input DataFrame with proper feature names
+    input_df = pd.DataFrame({
+        'AGE': data_df['Age'].astype(int),
+        'AQI': data_df['AQI'].astype(int), 
+        'Diabetes': data_df['diabetes'].astype(int),
+        'Hypertension': data_df['hypertension'].astype(int),
+        'Heart_Disease': data_df['heart_disease'].astype(int)
+    })
+    
+    # Handle any NaN values
+    input_df = input_df.fillna(0)
+    
+    # Scale all data at once (VECTORIZED - much faster)
+    input_scaled = model_data['scaler'].transform(input_df)
+    
+    # Predict all probabilities at once (BATCH PREDICTION - much faster)
+    risk_probabilities = model_data['model'].predict_proba(input_scaled)[:, 1]
+    risk_percentages = (risk_probabilities * 100).round(2)
+    
+    return risk_percentages.tolist()
+
+def get_weather(date: str, weather_path: str | None = None) -> pd.DataFrame:
+    """
+    Load weather data and return filtered rows for a given YYYYMMDD date.
+
+    Parameters:
+    - date: string like '20170101'
+    - weather_path: optional explicit path to weather_data.csv
+
+    Returns:
+    - pandas DataFrame with columns ['zipcode', 'AQI'] for the given date
+    """
+    # Resolve default path relative to this file
+    if weather_path is None:
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        weather_path = os.path.abspath(os.path.join(current_dir, 'data', 'weather_data.csv'))
+
+    if not os.path.exists(weather_path):
+        raise FileNotFoundError(f"Weather data not found at {weather_path}")
+
+    # Read only necessary columns for speed
+    df = pd.read_csv(weather_path, usecols=['date', 'zipcode', 'AQI'])
+    filtered = df[df['date'].astype(str) == str(date)][['zipcode', 'AQI']]
+    return filtered.reset_index(drop=True)
