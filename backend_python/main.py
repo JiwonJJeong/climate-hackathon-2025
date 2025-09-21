@@ -2,6 +2,7 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.middleware.gzip import GZipMiddleware
 import uvicorn
 import os
 import shutil
@@ -9,7 +10,7 @@ from datetime import datetime
 import time
 import pandas as pd
 import numpy as np
-from utils import load_model, predict_risk_percentage
+from utils import load_model, predict_risk_percentage, predict_risk_batch
 
 app = FastAPI(
     title="Climate Hackathon 2025 Backend",
@@ -25,6 +26,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Enable gzip compression for large responses
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # Create uploads directory if it doesn't exist
 os.makedirs("uploads", exist_ok=True)
@@ -118,25 +122,28 @@ async def list_files():
         data_dir = "uploads"
         if not os.path.exists(data_dir):
             os.makedirs(data_dir)
-        files = [f for f in os.listdir(data_dir) if f.endswith('.csv')]
+        files = [f for f in os.listdir(data_dir) 
+                if f.endswith('.csv') and not f.startswith('ANALYSIS_')]
         return {"files": files}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 @app.get("/api/view/{filename}")
-async def view_file(filename: str):
-    """View file contents"""
+async def view_file(filename: str, rows: int | None = None):
+    """View file contents (supports preview via rows param)"""
     try:
         file_path = os.path.join("uploads", filename)
         if not os.path.exists(file_path):
             raise HTTPException(status_code=404, detail="File not found")
-        
-        with open(file_path, 'r') as f:
+
+        # If rows is provided, return a preview using pandas (fast)
+        if rows and rows > 0:
+            df = pd.read_csv(file_path, nrows=rows)
+            return {"data": df.to_csv(index=False)}
+
+        # Otherwise return the full file (legacy behavior)
+        with open(file_path, 'r', encoding='utf-8') as f:
             content = f.read()
-        
-        print(f"File content length: {len(content)}")
-        print(f"First 100 chars: {content[:100]}")
-        
         return {"data": content}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
@@ -213,6 +220,154 @@ async def get_data_summary(filename: str):
             "percent_female": round(pct_female, 1) if pct_female else None,
             "condition_percentages": {k: round(v, 1) for k, v in condition_stats.items()},
             "payer_distribution": {k: round(v, 1) for k, v in payer_stats.items()}
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+@app.get("/api/get_weather_data/{date}")
+async def get_weather_data(date: str):
+    """Get weather data for a specific date"""
+    try:
+        weather_file = os.path.join("data", "weather_data.csv")
+        if not os.path.exists(weather_file):
+            raise HTTPException(status_code=404, detail="Weather data file not found")
+        
+        # Read weather data
+        df = pd.read_csv(weather_file)
+        
+        # Filter by date
+        filtered_data = df[df['date'].astype(str) == date]
+        
+        if len(filtered_data) == 0:
+            raise HTTPException(status_code=404, detail=f"No weather data found for date {date}")
+        
+        # Return only required columns
+        result = filtered_data[['date', 'zipcode', 'AQI']].to_dict('records')
+        
+        return {
+            "date": date,
+            "count": len(result),
+            "weather_data": result
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+@app.post("/api/compute_risk_with_weather")
+async def compute_risk_with_weather(date: str = None, filename: str = None):
+    """Compute risk by merging patient data with weather data for a specific date"""
+    try:
+        # Load the model
+        if not hasattr(compute_risk_with_weather, 'model_loaded'):
+            load_model()
+            compute_risk_with_weather.model_loaded = True
+        
+        # 1. Get weather data for the date
+        weather_file = os.path.join("data", "weather_data.csv")
+        if not os.path.exists(weather_file):
+            raise HTTPException(status_code=404, detail="Weather data file not found")
+        
+        weather_df = pd.read_csv(weather_file)
+        weather_filtered = weather_df[weather_df['date'].astype(str) == date][['zipcode', 'AQI']]
+        
+        if len(weather_filtered) == 0:
+            raise HTTPException(status_code=404, detail=f"No weather data for date {date}")
+        
+        # 2. Load patient CSV file
+        patient_file = os.path.join("uploads", filename)
+        if not os.path.exists(patient_file):
+            raise HTTPException(status_code=404, detail="Patient file not found")
+        
+        patient_df = pd.read_csv(patient_file)
+        
+        # 3. Match by zipcode (try different column names)
+        zip_col = None
+        for col in ['Plan Zip', 'plan_zip', 'zipcode', 'zip']:
+            if col in patient_df.columns:
+                zip_col = col
+                break
+        
+        if not zip_col:
+            raise HTTPException(status_code=400, detail="No zipcode column found in patient data")
+        
+        # Merge data
+        merged_df = patient_df.merge(
+            weather_filtered, 
+            left_on=zip_col, 
+            right_on='zipcode', 
+            how='left'
+        )
+        
+        # Fill missing AQI with median value
+        merged_df['AQI'] = merged_df['AQI'].fillna(merged_df['AQI'].median())
+        
+        # 4. Apply the model
+        required_cols = ['Age', 'AQI', 'diabetes', 'hypertension', 'heart_disease']
+        
+        # Check if required columns exist
+        missing_cols = []
+        for col in required_cols:
+            if col not in merged_df.columns:
+                # Try different variations
+                variations = [col.lower(), col.upper(), col.replace('_', ' ')]
+                found = False
+                for var in variations:
+                    if var in merged_df.columns:
+                        merged_df[col] = merged_df[var]
+                        found = True
+                        break
+                if not found:
+                    missing_cols.append(col)
+        
+        if missing_cols:
+            raise HTTPException(status_code=400, detail=f"Missing columns: {missing_cols}")
+        
+        # Apply model to all rows at once (MUCH FASTER - batch processing)
+        print(f"⚡ Processing {len(merged_df)} records with batch prediction...")
+        start_time = time.time()
+        
+        try:
+            # Use batch prediction for massive speed improvement
+            risk_scores = predict_risk_batch(merged_df)
+            merged_df['risk_percentage'] = risk_scores
+            
+            processing_time = time.time() - start_time
+            print(f"✅ Batch processing completed in {processing_time:.2f} seconds")
+            print(f"🚀 Speed: {len(merged_df)/processing_time:.0f} records/second")
+            
+        except Exception as e:
+            print(f"❌ Batch processing failed: {e}")
+            print("🔄 Falling back to row-by-row processing...")
+            
+            # Fallback to individual processing if batch fails
+            risk_scores = []
+            for _, row in merged_df.iterrows():
+                try:
+                    risk = predict_risk_percentage(
+                        age=int(row['Age']),
+                        aqi=int(row['AQI']),
+                        diabetes=int(row['diabetes']),
+                        hypertension=int(row['hypertension']),
+                        heart_disease=int(row['heart_disease'])
+                    )
+                    risk_scores.append(risk)
+                except Exception as e:
+                    risk_scores.append(None)
+            
+            merged_df['risk_percentage'] = risk_scores
+        
+        # 5. Save updated file with special prefix
+        output_filename = f"ANALYSIS_{date}_{filename}"
+        output_path = os.path.join("uploads", output_filename)
+        merged_df.to_csv(output_path, index=False)
+        
+        return {
+            "message": "Risk analysis completed",
+            "output_file": output_filename,
+            "records_processed": len(merged_df),
+            "weather_matches": len(merged_df[merged_df['AQI'].notna()]),
+            "average_risk": merged_df['risk_percentage'].mean() if len(merged_df) > 0 else None
         }
         
     except Exception as e:
